@@ -14,7 +14,7 @@ All in all you need to do two things:
 - Setup inference infra (aka vLLM and Prometheus + Grafana are your friends). 
 - Put an agent on top of that infra (aka LangGraph and Langfuse are your friends). The purpose of agent is to boost quality of system's responses.
   
-The endpoint will run on one H100, ain't much but honest hardware.
+The endpoint will run on two V100s, ain't much but honest hardware.
 
 ![Farmer](https://cloudfront-us-east-1.images.arcpublishing.com/gray/FLBGRRRDQNHYBNTNHU4WOWRIFY.png)
 
@@ -42,7 +42,7 @@ If done with curiosity, this assignment will bring you tons of knowledge about h
 
   
 
--  **Hardware:** 1× H100
+-  **Hardware:** 2× V100 32GB
 
 -  **Software:** Docker + docker-compose, Python with `python3-dev` headers (vLLM's torch.compile path needs them), uv, git  
 
@@ -122,10 +122,10 @@ If a URL doesn't load, the port forward is the most likely culprit.
 
 Imagine the minimal SLO your leadership can buy is something like this:
 
-> **P95 end-to-end agent latency under 5 seconds, 10+ RPS (1rps = 1 full agent run per second) over a 5-minute window.**
+> **P95 end-to-end agent latency under 10 seconds, 3+ RPS (1rps = 1 full agent run per second) over a 5-minute window.**
 
 
-The model is fixed: `Qwen/Qwen3-30B-A3B-Instruct-2507`. The hardware is fixed: 1× H100 80GB. Everything else is up to you, use your knowledge of inference optimizations.
+The model is fixed: `Qwen/Qwen3-30B-A3B-Instruct-2507`. The hardware is fixed: 2× V100 32GB. Everything else is up to you, use your knowledge of inference optimizations.
 
 We are not enumerating which parameters to consider on purpose. Knowing which levers to reach for, given a workload profile (1.5-3K-token prompts, short structured outputs, ~2-3 dependent calls per user request) and a latency target, is the apply-the-lectures part of the assignment. Heads-up: you'll need to iterate.   
 
@@ -148,14 +148,14 @@ There's an example launch script at `scripts/start_vllm.sh` to get you started -
 
   
 
-## H100 is not needed all the time
+## V100 is not needed all the time
 
-You don't have to occupy an H100 VM to make progress on every phase. The agent and the o11y stack talk to *any* OpenAI-compatible server, so you can build and debug against a lighter backend and switch to the real endpoint only when the numbers matter. Configure the backend via `VLLM_BASE_URL` / `VLLM_MODEL` / `OPENAI_API_KEY` in `.env` (see the commented block there). Consider two options:
+You don't have to occupy a V100 VM to make progress on every phase. The agent and the o11y stack talk to *any* OpenAI-compatible server, so you can build and debug against a lighter backend and switch to the real endpoint only when the numbers matter. Configure the backend via `VLLM_BASE_URL` / `VLLM_MODEL` / `OPENAI_API_KEY` in `.env` (see the commented block there). Consider two options:
 
 - Hosted API: point at e.g. OpenAI with a your own key. It exposes no Prometheus metrics though.
 - CPU-only vLLM: run vLLM on CPU with a small stand-in model like `Qwen/Qwen3-0.6B`. See the [CPU install docs](https://docs.vllm.ai/en/latest/getting_started/installation/cpu.html) for more details.
 
-What you can do off the H100:
+What you can do off the V100:
 
 | Phase | Off-GPU? | Notes |
 |---|---|---|
@@ -164,7 +164,7 @@ What you can do off the H100:
 | 4 (Tracing) | Either | Langfuse captures the LangGraph spans regardless of backend. |
 | 5 (Evals) | Either | Validate the eval harness end-to-end; real pass rates must come from the 30B endpoint. |
 
-Anything you report e.g. eval pass rates, latency, the Phase 6 SLO must come from the real `Qwen3-30B-A3B` on the H100.
+Anything you report e.g. eval pass rates, latency, the Phase 6 SLO must come from the real `Qwen3-30B-A3B` on the V100.
 
 ---
 
@@ -236,7 +236,7 @@ ok=false├──► ┌─────────────────┐
 
   
 
-> **Tip:** this phase is pure agent logic - you don't need the H100 running to build the graph and draft prompts. See [Developing without the H100](#developing-without-the-h100). Do final prompt tuning against the real `Qwen3-30B-A3B` endpoint, though - behavior and tokenization differ between models.
+> **Tip:** this phase is pure agent logic - you don't need the V100 running to build the graph and draft prompts. See [Developing without the V100](#developing-without-the-v100). Do final prompt tuning against the real `Qwen3-30B-A3B` endpoint, though - behavior and tokenization differ between models.
 
 ### What to do:
 
@@ -347,7 +347,7 @@ The eval signal is execution accuracy: run the agent's final SQL and the gold SQ
 
 This is where the configuration from Phase 1 meets reality. The target is the platform SLO from Phase 1:
 
-> **P95 end-to-end agent latency under 5 seconds, 10+ RPS (1rps = 1 full agent run per second) over a 5-minute window.**
+> **P95 end-to-end agent latency under 10 seconds, 3+ RPS (1rps = 1 full agent run per second) over a 5-minute window.**
 
  
 ### What to do:
@@ -430,7 +430,7 @@ We want to see your thoughts and reasoning process, not the green checkmarks. Sh
 
 | Area | Weight | What a strong submission shows |
 |---|---|---|
-| **Serving config & justification** (Phase 1) | 15% | vLLM serving Qwen3-30B-A3B on the H100, with flags chosen *for this workload* (not defaults) and a one-line rationale each that shows you understood the MoE / prompt-shape / latency tradeoffs. |
+| **Serving config & justification** (Phase 1) | 15% | vLLM serving Qwen3-30B-A3B on the V100, with flags chosen *for this workload* (not defaults) and a one-line rationale each that shows you understood the MoE / prompt-shape / latency tradeoffs. |
 | **Observability dashboard** (Phase 2) | 15% | Latency (percentiles), throughput, and KV-cache panels built from the right `/metrics`, that visibly react under load and actually answer "is it slow, and where in the request lifecycle?" Readable cold. |
 | **Agent design** (Phase 3) | 10% | `verify → revise` loop wired with an iteration cap, prompts that catch the obvious failure cases, and at least one question that genuinely triggers a revise. |
 | **Agent tracing** (Phase 4) | 5% | Langfuse capturing the `generate_sql / verify / (revise)` waterfall, with metadata tags you actually use in Phase 6. |
